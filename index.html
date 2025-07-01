@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Processador de Jupyter Notebook</title>
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        background: #f4f4f9;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        padding: 40px;
+      }
+
+      h1 {
+        color: #333;
+      }
+
+      #dropArea {
+        border: 3px dashed #777;
+        border-radius: 10px;
+        background: #fff;
+        padding: 30px;
+        text-align: center;
+        color: #555;
+        width: 400px;
+        margin: 20px 0;
+        transition: background 0.3s, border-color 0.3s;
+      }
+
+      #dropArea.dragover {
+        background: #e0f7fa;
+        border-color: #00796b;
+        color: #00796b;
+      }
+
+      #fileInput {
+        display: none;
+      }
+
+      #processButton {
+        background: #4caf50;
+        color: white;
+        border: none;
+        padding: 10px 20px;
+        border-radius: 5px;
+        cursor: pointer;
+        font-size: 16px;
+        margin-top: 15px;
+      }
+
+      #processButton:disabled {
+        background: #ccc;
+        cursor: not-allowed;
+      }
+
+      #preview {
+        background: #fff;
+        border: 1px solid #ddd;
+        padding: 20px;
+        margin-top: 20px;
+        width: 80%;
+        max-width: 800px;
+        overflow-x: auto;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Processar Jupyter Notebook</h1>
+
+    <div id="dropArea">
+      Arraste o arquivo <strong>.ipynb</strong> aqui ou
+      <label style="color: #007bff; cursor: pointer">
+        clique para selecionar
+        <input type="file" id="fileInput" accept=".ipynb" />
+      </label>
+    </div>
+
+    <button id="processButton" disabled>Processar e Baixar</button>
+
+    <div id="preview"></div>
+
+    <script>
+      let notebookData = null
+      const dropArea = document.getElementById('dropArea')
+      const fileInput = document.getElementById('fileInput')
+      const preview = document.getElementById('preview')
+
+      ;['dragenter', 'dragover'].forEach(eventName => {
+        document.addEventListener(
+          eventName,
+          e => {
+            e.preventDefault()
+            e.stopPropagation()
+            dropArea.classList.add('dragover')
+          },
+          false,
+        )
+      })
+
+      ;['dragleave', 'drop'].forEach(eventName => {
+        document.addEventListener(
+          eventName,
+          e => {
+            e.preventDefault()
+            e.stopPropagation()
+            dropArea.classList.remove('dragover')
+          },
+          false,
+        )
+      })
+
+      document.addEventListener('drop', e => {
+        const file = e.dataTransfer.files[0]
+        if (file && file.name.endsWith('.ipynb')) {
+          lerNotebook(file)
+        } else {
+          alert('Por favor, envie um arquivo .ipynb válido.')
+        }
+      })
+
+      fileInput.addEventListener('change', e => {
+        const file = e.target.files[0]
+        if (file) {
+          lerNotebook(file)
+        }
+      })
+
+      function lerNotebook(file) {
+        const reader = new FileReader()
+        reader.onload = function (e) {
+          try {
+            notebookData = JSON.parse(e.target.result)
+            document.getElementById('processButton').disabled = false
+            preview.innerHTML = `<p><strong>Notebook carregado:</strong> ${file.name}</p>`
+          } catch (err) {
+            alert('Erro ao ler o notebook: ' + err)
+            notebookData = null
+            document.getElementById('processButton').disabled = true
+            preview.innerHTML = ''
+          }
+        }
+        reader.readAsText(file)
+      }
+
+      document.getElementById('processButton').addEventListener('click', () => {
+        if (!notebookData) return
+        if (notebookData.cells) {
+          notebookData.cells.forEach(cell => {
+            if (cell.cell_type === 'code' && Array.isArray(cell.source)) {
+              cell.source.unshift('# Processado pelo script\n')
+            }
+          })
+        }
+        const newNotebookHTML = notebookParaHTML(notebookData)
+        preview.innerHTML = newNotebookHTML
+        const blob = new Blob([newNotebookHTML], { type: 'application/html' })
+        const url = URL.createObjectURL(blob)
+        const a = document.createElement('a')
+        a.href = url
+        a.download = 'notebook_processado.html'
+        a.click()
+        URL.revokeObjectURL(url)
+      })
+
+      function notebookParaHTML(notebookJSON) {
+        if (!Array.isArray(notebookJSON.cells)) return ''
+        let html = ''
+        notebookJSON.cells.forEach(cell => {
+          if (cell.cell_type === 'code' && Array.isArray(cell.outputs)) {
+            cell.outputs.forEach(output => {
+              if (output.name === 'stderr') return
+              html += `<div class="output">`
+              if (output.text) {
+                html += `<pre>${escapeHTML(output.text.join(''))}</pre>`
+              }
+              if (output.data?.['text/html']) {
+                html += Array.isArray(output.data['text/html'])
+                  ? output.data['text/html'].join('')
+                  : output.data['text/html']
+              }
+              if (output.data?.['text/plain'] && !output.data['text/html']) {
+                html += `<pre>${escapeHTML(
+                  Array.isArray(output.data['text/plain'])
+                    ? output.data['text/plain'].join('')
+                    : output.data['text/plain'],
+                )}</pre>`
+              }
+              if (output.data?.['image/png']) {
+                html += `<img src="data:image/png;base64,${output.data['image/png']}" />`
+              }
+              if (output.data?.['image/jpeg']) {
+                html += `<img src="data:image/jpeg;base64,${output.data['image/jpeg']}" />`
+              }
+              html += `</div>`
+            })
+          }
+        })
+        return html
+      }
+
+      function escapeHTML(str) {
+        if (Array.isArray(str)) str = str.join('')
+        return (str ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      }
+    </script>
+  </body>
+</html>
