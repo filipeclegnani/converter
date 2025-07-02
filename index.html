@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+"<!DOCTYPE html>
 <html lang="pt-BR">
   <head>
     <meta charset="UTF-8" />
@@ -7,20 +7,18 @@
       html {
         overflow-y: scroll;
       }
-
       body {
-        font-family: Arial, sans-serif;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu,
+          Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
         background: #f4f4f9;
         display: flex;
         flex-direction: column;
         align-items: center;
         padding: 40px;
       }
-
       h1 {
         color: #333;
       }
-
       #dropArea {
         border: 3px dashed #777;
         border-radius: 10px;
@@ -32,17 +30,14 @@
         margin: 20px 0;
         transition: background 0.3s, border-color 0.3s;
       }
-
       #dropArea.dragover {
         background: #e0f7fa;
         border-color: #00796b;
         color: #00796b;
       }
-
       #fileInput {
         display: none;
       }
-
       #processButton {
         background: #4caf50;
         color: white;
@@ -53,12 +48,10 @@
         font-size: 16px;
         margin-top: 15px;
       }
-
       #processButton:disabled {
         background: #ccc;
         cursor: not-allowed;
       }
-
       #preview {
         background: #fff;
         border: 1px solid #ddd;
@@ -67,12 +60,24 @@
         min-width: calc(100vw - 60px);
         max-width: calc(100vw - 60px);
         overflow-x: auto;
+        scrollbar-width: none;
+      }
+
+      iframe {
+        width: 100%;
+        border: none;
+        height: auto;
+        display: block;
+        overflow: hidden;
+        scrollbar-width: none;
+      }
+      iframe::-webkit-scrollbar {
+        display: none;
       }
     </style>
   </head>
   <body>
     <h1>Extrair a saída de Jupyter Notebook</h1>
-
     <div id="dropArea">
       Arraste o arquivo <strong>.ipynb</strong> aqui ou
       <label style="color: #007bff; cursor: pointer">
@@ -80,67 +85,41 @@
         <input type="file" id="fileInput" accept=".ipynb" />
       </label>
     </div>
-
     <button id="processButton" disabled>Baixar</button>
-
     <div id="preview"></div>
-
     <script>
-      if ('serviceWorker' in navigator) {
-        navigator.serviceWorker
-          .register('/converter/service-worker.js')
-          .then(() => console.log('Service Worker registrado com sucesso!'))
-          .catch(err => console.log('Erro ao registrar o Service Worker:', err))
-      }
-      let notebookData = null
       const dropArea = document.getElementById('dropArea')
       const fileInput = document.getElementById('fileInput')
       const preview = document.getElementById('preview')
       const processButton = document.getElementById('processButton')
+      let notebookData = null
+      let notebookParsed = ''
 
-      ;['dragenter', 'dragover'].forEach(eventName => {
-        document.addEventListener(
-          eventName,
-          e => {
-            e.preventDefault()
-            e.stopPropagation()
-            dropArea.classList.add('dragover')
-          },
-          false,
-        )
+      ;['dragenter', 'dragover'].forEach(e => {
+        document.addEventListener(e, ev => {
+          ev.preventDefault()
+          dropArea.classList.add('dragover')
+        })
       })
-      ;['dragleave', 'drop'].forEach(eventName => {
-        document.addEventListener(
-          eventName,
-          e => {
-            e.preventDefault()
-            e.stopPropagation()
-            dropArea.classList.remove('dragover')
-          },
-          false,
-        )
+      ;['dragleave', 'drop'].forEach(e => {
+        document.addEventListener(e, ev => {
+          ev.preventDefault()
+          dropArea.classList.remove('dragover')
+        })
       })
-
       document.addEventListener('drop', e => {
         const file = e.dataTransfer.files[0]
-        if (file && file.name.endsWith('.ipynb')) {
-          lerNotebook(file)
-        } else {
-          alert('Por favor, envie um arquivo .ipynb válido.')
-        }
+        if (file?.name.endsWith('.ipynb')) lerNotebook(file)
+        else alert('Por favor, envie um arquivo .ipynb válido.')
       })
-
       fileInput.addEventListener('change', e => {
         const file = e.target.files[0]
-        if (file) {
-          lerNotebook(file)
-        }
+        if (file) lerNotebook(file)
       })
-
       processButton.addEventListener('click', () => {
         if (!notebookData) return
-        const newNotebookHTML = notebookParaHTML(notebookData)
-        const blob = new Blob([newNotebookHTML], { type: 'application/html' })
+        const html = notebookParsed
+        const blob = new Blob([html], { type: 'application/html' })
         const url = URL.createObjectURL(blob)
         const a = document.createElement('a')
         a.href = url
@@ -148,10 +127,9 @@
         a.click()
         URL.revokeObjectURL(url)
       })
-
       function lerNotebook(file) {
         const reader = new FileReader()
-        reader.onload = function (e) {
+        reader.onload = e => {
           try {
             notebookData = JSON.parse(e.target.result)
             processarNotebook()
@@ -165,58 +143,132 @@
         }
         reader.readAsText(file)
       }
-
       function processarNotebook() {
-        if (!notebookData) return
-        if (notebookData.cells) {
-          notebookData.cells.forEach(cell => {
-            if (cell.cell_type === 'code' && Array.isArray(cell.source)) {
-              cell.source.unshift('# Processado pelo script\n')
-            }
-          })
-        }
-        const newNotebookHTML = notebookParaHTML(notebookData)
-        preview.innerHTML = newNotebookHTML
-      }
-
-      function notebookParaHTML(notebookJSON) {
-        if (!Array.isArray(notebookJSON.cells)) return ''
-        let html = ''
-        notebookJSON.cells.forEach(cell => {
-          if (cell.cell_type === 'code' && Array.isArray(cell.outputs)) {
-            cell.outputs.forEach(output => {
-              if (output.name === 'stderr') return
-              html += `<div class="output">`
-              if (output.text) {
-                html += `<pre>${escapeHTML(output.text.join(''))}</pre>`
-              }
-              if (output.data?.['text/html']) {
-                html += Array.isArray(output.data['text/html'])
-                  ? output.data['text/html'].join('')
-                  : output.data['text/html']
-              }
-              if (output.data?.['text/plain'] && !output.data['text/html']) {
-                html += `<pre>${escapeHTML(
-                  Array.isArray(output.data['text/plain'])
-                    ? output.data['text/plain'].join('')
-                    : output.data['text/plain'],
-                )}</pre>`
-              }
-              if (output.data?.['image/png']) {
-                html += `<img src="data:image/png;base64,${output.data['image/png']}" />`
-              }
-              if (output.data?.['image/jpeg']) {
-                html += `<img src="data:image/jpeg;base64,${output.data['image/jpeg']}" />`
-              }
-              html += `</div>`
-            })
+        if (!notebookData?.cells) return
+        notebookData.cells.forEach(cell => {
+          if (cell.cell_type === 'code' && Array.isArray(cell.source)) {
+            cell.source.unshift('# Processado pelo script\n')
           }
         })
+        notebookParsed = geraHTMLCompleto(notebookParaHTML(notebookData))
+
+        const iframe = document.createElement('iframe')
+        iframe.srcdoc = notebookParsed
+        iframe.onload = () => {
+          iframe.style.height = iframe.contentWindow.document.documentElement.scrollHeight + 'px'
+        }
+        preview.innerHTML = ''
+        preview.appendChild(iframe)
+      }
+      function geraHTMLCompleto(conteudo) {
+        return `<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<title>Notebook Processado</title>
+<style>
+table {
+  border-collapse: collapse;
+  margin: 15px 0;
+  width: 100%;
+  border: 1px solid #ccc;
+}
+th, td {
+  border: 1px solid #ccc;
+  padding: 8px 12px;
+  text-align: left;
+  background: #fff;
+}
+th {
+  background: #f0f0f0;
+  font-weight: bold;
+}
+tr:hover {
+  background-color: #e1f5fe;
+}
+hr {
+  border: 0;
+  border-top: 1px solid #ccc;
+  margin: 20px 0;
+}
+</style>
+</head>
+<body>
+${conteudo}
+</body>
+</html>`
+      }
+      function notebookParaHTML(notebook) {
+        return notebook.cells
+          .map(cell => {
+            if (cell.cell_type === 'markdown') {
+              const txt = cell.source?.filter(cell => cell !== '\n')?.join('') || ''
+              return `<div class="markdown">${converterMarkdown(converterTabelas(txt))}</div>`
+            }
+            if (cell.cell_type === 'code') {
+              return (cell.outputs || []).map(out => renderOutput(out)).join('')
+            }
+            return ''
+          })
+          .join('')
+      }
+      function renderOutput(output) {
+        if (output.name === 'stderr') return ''
+        let html = '<div class="output">'
+        if (output.text) html += converterTabelas(output.text)
+        if (output.data?.['text/html'])
+          html += Array.isArray(output.data['text/html'])
+            ? output.data['text/html'].join('')
+            : output.data['text/html']
+        if (output.data?.['text/plain'] && !output.data['text/html'])
+          html += converterTabelas(output.data['text/plain'])
+        if (output.data?.['image/png'])
+          html += `<img src="data:image/png;base64,${output.data['image/png']}" />`
+        if (output.data?.['image/jpeg'])
+          html += `<img src="data:image/jpeg;base64,${output.data['image/jpeg']}" />`
+        html += '</div>'
         return html
       }
-
+      function converterMarkdown(texto) {
+        return texto
+          .replace(/^###### (.*$)/gim, '<h6>$1</h6>')
+          .replace(/^##### (.*$)/gim, '<h5>$1</h5>')
+          .replace(/^#### (.*$)/gim, '<h4>$1</h4>')
+          .replace(/^### (.*$)/gim, '<h3>$1</h3>')
+          .replace(/^## (.*$)/gim, '<h2>$1</h2>')
+          .replace(/^# (.*$)/gim, '<h1>$1</h1>')
+          .replace(/^---$/gim, '<hr>')
+          .replace(/\*\*(.*?)\*\*/gim, '<b>$1</b>')
+          .replace(/\*(.*?)\*/gim, '<i>$1</i>')
+          .replace(/`([^`]+)`/gim, '<code>$1</code>')
+          .replace(/\n/g, '<br>')
+      }
+      function converterTabelas(texto) {
+        const regexTabela =
+          /(\|.*\|)(?:<br>|\n)(\|[-:| \t]+\|)(?:<br>|\n)((?:\|.*\|(?:<br>|\n)?)+)/g
+        return texto.replace(regexTabela, (m, cab, sep, corpo) => {
+          const ths = cab
+            .split('|')
+            .filter(Boolean)
+            .map(c => `<th>${escapeHTML(c.trim())}</th>`)
+            .join('')
+          const trs = corpo
+            .trim()
+            .split(/<br>|\n/)
+            .filter(l => l.includes('|'))
+            .map(
+              l =>
+                `<tr>${l
+                  .split('|')
+                  .filter(Boolean)
+                  .map(c => `<td>${escapeHTML(c.trim())}</td>`)
+                  .join('')}</tr>`,
+            )
+            .join('')
+          return `<table><thead><tr>${ths}</tr></thead><tbody>${trs}</tbody></table>`
+        })
+      }
       function escapeHTML(str) {
-        if (Array.isArray(str)) str = str.join('')
         return (str ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
       }
     </script>
