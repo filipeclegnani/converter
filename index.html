@@ -4,6 +4,10 @@
     <meta charset="UTF-8" />
     <title>Processador de Jupyter Notebook</title>
     <style>
+      html {
+        overflow-y: scroll;
+      }
+
       body {
         font-family: Arial, sans-serif;
         background: #f4f4f9;
@@ -60,14 +64,14 @@
         border: 1px solid #ddd;
         padding: 20px;
         margin-top: 20px;
-        width: 80%;
-        max-width: 800px;
+        min-width: calc(100vw - 60px);
+        max-width: calc(100vw - 60px);
         overflow-x: auto;
       }
     </style>
   </head>
   <body>
-    <h1>Processar Jupyter Notebook</h1>
+    <h1>Extrair a saída de Jupyter Notebook</h1>
 
     <div id="dropArea">
       Arraste o arquivo <strong>.ipynb</strong> aqui ou
@@ -77,15 +81,22 @@
       </label>
     </div>
 
-    <button id="processButton" disabled>Processar e Baixar</button>
+    <button id="processButton" disabled>Baixar</button>
 
     <div id="preview"></div>
 
     <script>
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker
+          .register('/service-worker.js')
+          .then(() => console.log('Service Worker registrado com sucesso!'))
+          .catch(err => console.log('Erro ao registrar o Service Worker:', err))
+      }
       let notebookData = null
       const dropArea = document.getElementById('dropArea')
       const fileInput = document.getElementById('fileInput')
       const preview = document.getElementById('preview')
+      const processButton = document.getElementById('processButton')
 
       ;['dragenter', 'dragover'].forEach(eventName => {
         document.addEventListener(
@@ -98,7 +109,6 @@
           false,
         )
       })
-
       ;['dragleave', 'drop'].forEach(eventName => {
         document.addEventListener(
           eventName,
@@ -127,24 +137,36 @@
         }
       })
 
+      processButton.addEventListener('click', () => {
+        if (!notebookData) return
+        const newNotebookHTML = notebookParaHTML(notebookData)
+        const blob = new Blob([newNotebookHTML], { type: 'application/html' })
+        const url = URL.createObjectURL(blob)
+        const a = document.createElement('a')
+        a.href = url
+        a.download = 'notebook_processado.html'
+        a.click()
+        URL.revokeObjectURL(url)
+      })
+
       function lerNotebook(file) {
         const reader = new FileReader()
         reader.onload = function (e) {
           try {
             notebookData = JSON.parse(e.target.result)
-            document.getElementById('processButton').disabled = false
-            preview.innerHTML = `<p><strong>Notebook carregado:</strong> ${file.name}</p>`
+            processarNotebook()
+            processButton.disabled = false
           } catch (err) {
             alert('Erro ao ler o notebook: ' + err)
             notebookData = null
-            document.getElementById('processButton').disabled = true
             preview.innerHTML = ''
+            processButton.disabled = true
           }
         }
         reader.readAsText(file)
       }
 
-      document.getElementById('processButton').addEventListener('click', () => {
+      function processarNotebook() {
         if (!notebookData) return
         if (notebookData.cells) {
           notebookData.cells.forEach(cell => {
@@ -155,14 +177,7 @@
         }
         const newNotebookHTML = notebookParaHTML(notebookData)
         preview.innerHTML = newNotebookHTML
-        const blob = new Blob([newNotebookHTML], { type: 'application/html' })
-        const url = URL.createObjectURL(blob)
-        const a = document.createElement('a')
-        a.href = url
-        a.download = 'notebook_processado.html'
-        a.click()
-        URL.revokeObjectURL(url)
-      })
+      }
 
       function notebookParaHTML(notebookJSON) {
         if (!Array.isArray(notebookJSON.cells)) return ''
