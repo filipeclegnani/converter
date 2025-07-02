@@ -107,6 +107,7 @@
       let notebookParsed = ''
       let nomeArquivo = 'notebook_processado'
       let versao = 'desconhecida'
+      let versaoDiv = document.getElementById('versao')
 
       fetch('/converter/version.txt')
         .then(r => r.text())
