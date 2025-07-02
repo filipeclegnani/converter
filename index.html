@@ -88,7 +88,7 @@
     <script>
       if ('serviceWorker' in navigator) {
         navigator.serviceWorker
-          .register('/service-worker.js')
+          .register('/converter/service-worker.js')
           .then(() => console.log('Service Worker registrado com sucesso!'))
           .catch(err => console.log('Erro ao registrar o Service Worker:', err))
       }
